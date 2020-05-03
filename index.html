@@ -241,9 +241,14 @@
 	  // correct country
           // country names of data and geojson
           var cc = function(country) {
-		  const correction = {"United States of America": "US",
-				      "South Korea": "Korea; South"};
-		  return  correction.hasOwnProperty(country) ? correction[country] : country;
+	      const correction = {"United States of America": "US",
+				  "South Korea": "Korea; South",
+				  "Republic of Serbia": "Serbia",
+				  "Macedonia": "North Macedonia",
+				  "Republic of the Congo": "Congo (Brazzaville)",
+				  "Democratic Republic of the Congo": "Congo (Kinshasa)"
+				 };
+	      return  correction.hasOwnProperty(country) ? correction[country] : country;
 	  }
           worldChart.width(800)
               .height(500)
