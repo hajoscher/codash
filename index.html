@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<meta http-equiv="content-type" content="text/html; charset=UTF8">
+
+<html lang = "en">
+  <head>
+    <script src = "js/d3.js"></script>
+    <script src = "js/crossfilter.js"></script>
+    <script src = "js/dc.js"></script>
+    <script src = "js/reductio.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="css/dc.css">
+    <style>
+      .dc-chart { font-size: 12px; }
+      .dc-table-group { padding-left: 10px; font-size: 14px; font-weight: bold; }
+      .dc-table-column { padding-left: 10px; font-size: 12px; font-weight: normal; }
+      .dc-chart g.row text {fill: black;}
+      .dc-chart g.state path {
+	  stroke: #2b2222;
+	  stroke-width: 0.3;
+      }
+    </style>
+  </head>
+
+  <body>
+    <a
+       href='javascript:resetAll();'>reset all</a>
+    <div id='world-chart' style='float: left;'></div>
+    <div id='active-country-chart' style='float: right;'>
+      <a class='reset'
+         href='javascript:dc.redrawAll();'
+         style='visibility: hidden;'></a>
+    </div>
+    <div id='selected-countries' style='float: right;'></div>
+    <div id='active-date-chart' style='float: left;'>
+    </div>
+    <div id='newconfirmed-date-chart' style='float: left;'>
+      <a class='reset'
+         href='javascript:activeByDateChart.filterAll(); dc.redrawAll();'
+         style='visibility: hidden;'></a>
+    </div>
+    <div id='newdeaths-date-chart' style='float: left;'>
+      <a class='reset'
+         href='javascript:newDeathsByDateChart.filterAll(); dc.redrawAll();'
+         style='visibility: hidden;'></a>
+    </div>
+    <div id='newrecovered-date-chart' style='float: left;'>
+      <a class='reset'
+         href='javascript:activeByDateChart.filterAll(); dc.redrawAll();'
+         style='visibility: hidden;'></a>
+    </div>
+
+    <div style = "clear: both">
+      <div id = "country-table"></div>
+    </div>
+
+
+    <script>
+
+      var worldChart = new dc.GeoChoroplethChart("#world-chart");
+
+      activeByCountryChart = new dc.RowChart('#active-country-chart');
+      activeByDateChart = new dc.SeriesChart("#active-date-chart");
+      newConfirmedByDateChart = new dc.SeriesChart("#newconfirmed-date-chart");
+      newDeathsByDateChart = new dc.SeriesChart("#newdeaths-date-chart");
+      newRecoveredByDateChart = new dc.SeriesChart("#newrecovered-date-chart");
+
+      fname0 = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
+      fname1 = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
+      fname2 = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv"
+
+      mydata = {};
+      Promise.all([
+	  d3.csv(fname0),
+	  d3.csv(fname1),
+	  d3.csv(fname2),
+	  d3.json("https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json")
+      ]).then( files => {
+	  mydata = {};
+	  const keylist = ["confirmed", "deaths", "recovered"];
+	  worldJson = files[3];
+
+	  resetAll = function() {
+	      dc.filterAll()
+	      activeByCountryChart.filter(["US"])
+	      worldChart.filter(["US"])
+	      update_selected(table, ["US"])
+	      dc.renderAll();
+	  }
+
+	  for (var i in keylist) {
+	      cname = keylist[i];
+	      files[i].forEach(d => {
+		  country = d["Country/Region"];
+		  province = d["Province/State"];
+		  province = province.replace(/,/g ,";");
+		  country = country.replace(/,/g ,";");
+		  lat = d["Lat"];
+		  lon = d["Long"];
+		  delete d["Country/Region"];
+		  delete d["Province/State"];
+		  delete d["Lat"];
+		  delete d["Long"];
+		  key_ = country + "," + province + "," ;
+		  var old_val = 0;
+		  var old_key = "";
+		  for (var date in d) {
+		      if (d.hasOwnProperty(date)) {
+			  var mykey = key_ + date
+			  if ( ! mydata.hasOwnProperty(mykey) ) {
+			      mydata[mykey] = {};
+			  }
+			  var val = +d[date];
+			  if ( val < old_val ) {
+
+
+			  }
+			  mydata[mykey][cname] = val;
+			  mydata[mykey]["new" + cname.charAt(0).toUpperCase() + cname.slice(1)] = val - old_val;
+			  old_val = val;
+			  old_key = key;
+		      }
+		  }
+	      })
+	  }
+	  ndata = []
+	  for (var key in mydata) {
+	      if (mydata.hasOwnProperty(key)) {
+		  fields = key.split(",")
+		  var country = fields[0];
+		  var province = fields[1];
+		  var date = new Date(fields[2]);
+		  if ( mydata[key].hasOwnProperty("confirmed")
+		       &&  mydata[key].hasOwnProperty("deaths")
+		       &&  mydata[key].hasOwnProperty("recovered") ) {
+		      ndata.push( {
+			  "country": country,
+			  "province": province,
+			  "date": date,
+			  "confirmed": mydata[key]["confirmed"],
+			  "deaths": mydata[key]["deaths"],
+			  "recovered": mydata[key]["recovered"],
+			  "newConfirmed": mydata[key]["newConfirmed"],
+			  "newDeaths": mydata[key]["newDeaths"],
+			  "newRecovered": mydata[key]["newRecovered"]
+		      })
+		  }
+	      }
+	  }
+	  delete mydata;
+	  delete files;
+	  ndx = crossfilter(ndata);
+
+	  table = d3.select("#selected-countries")
+	      .append("div").style("float", "left")
+	      .text("selected countries (click to remove)")
+
+	  update_selected = function (table, data) {
+	      console.log("trying update", data);
+	      u = table.selectAll("div.countries")
+		  .data(data)
+	      u.enter().append("div").text(d=>d).attr("class", "countries")
+	      u.text(d => d);
+	      u.exit().remove();
+	      table.selectAll("div.countries").on("click", d=> {
+		  activeByCountryChart.filter(d).redrawGroup();
+		  worldChart.filter(d).redrawGroup();
+		  update_selected(table, activeByCountryChart.filters());
+	      });
+	  }
+
+	  countryDim = ndx.dimension(d => d.country);
+	  activeByCountryGroup = countryDim.group().reduceSum(d => d.newConfirmed - d.newDeaths - d.newRecovered);
+	  dateDim = ndx.dimension(d => d.date);
+
+	  function remove_empty_bins(source_group) {
+	      return {
+		  all:function () {
+		      countries = {}
+		      activeByCountryChart.filters().forEach(d => countries[d] = 1)
+		      return source_group.all().filter(function(d) {
+
+			  //return Math.abs(d.value) > 0.00001; // if using floating-point numbers
+			  return d.value !== 0; // if integers only
+		      });
+		  }
+	      };
+	  }
+
+	  countryDateDim = ndx.dimension(d => [d.country, d.date]);
+	  activeByCountryDate = remove_empty_bins(countryDateDim.group()
+						  .reduceSum(d => d.confirmed -
+							     d.deaths - d.recovered));
+	  newConfirmedByCountryDate = remove_empty_bins(countryDateDim.group()
+						  .reduceSum(d => d.newConfirmed));
+	  newDeathsByCountryDate = remove_empty_bins(countryDateDim.group()
+						  .reduceSum(d => d.newDeaths));
+	  newRecoveredByCountryDate = remove_empty_bins(countryDateDim.group()
+						  .reduceSum(d => d.newRecovered));
+
+	  minDate = dateDim.bottom(1)[0].date;
+	  maxDate = dateDim.top(1)[0].date;
+
+	  projection = d3.geoMercator()
+	      .center([20,40])
+	      .scale(120)
+	      .rotate([-12,0]);
+	  // projection =  d3.geoOrthographic().rotate([-222,0])
+
+	  zoom = d3.zoom()
+		.scaleExtent([1, 8])
+		.on("zoom", move);
+
+
+	  function move() {
+
+	      var t = d3.event.translate;
+	      var s = d3.event.scale;
+	      console.log(s,t);
+	      var height = 800;
+	      var width = 600;
+	      var h = height / 3;
+
+
+	      t[0] = Math.min(width / 2 * (s - 1), Math.max(width / 2 * (1 - s), t[0]));
+	      t[1] = Math.min(height / 2 * (s - 1) + h * s, Math.max(height / 2 * (1 - s) - h * s, t[1]));
+
+	      //zoom.translate(t);
+	      zoom.rotate(t);
+	      //g.style("stroke-width", 1 / s).attr("transform", "translate(" + t + ")scale(" + s + ")");
+
+}
+
+	  // correct country
+          // country names of data and geojson
+          var cc = function(country) {
+		  const correction = {"United States of America": "US",
+				      "South Korea": "Korea; South"};
+		  return  correction.hasOwnProperty(country) ? correction[country] : country;
+	  }
+          worldChart.width(800)
+              .height(500)
+              .dimension(countryDim)
+              .group(activeByCountryGroup)
+              .colors(d3.scaleQuantize().range(["#E2F2FF", "#C4E4FF", "#9ED2FF", "#81C5FF", "#6BBAFF", "#51AEFF", "#36A2FF", "#1E96FF", "#0089FF", "#0061B5"]))
+              .colorDomain([0, 200])
+              .colorCalculator(function (d) { return d ? worldChart.colors()(d) : '#ccc'; })
+              .overlayGeoJson(worldJson.features, "state", function (d) {
+                 return cc(d.properties.name);
+              })
+              .projection(projection)
+              .valueAccessor(function(kv) {
+                  return kv.value;
+              }).keyAccessor(function(kv) {
+                  return kv.key;
+              })
+	      .removeFilterHandler(function (filters, filter) {
+		  console.log("remove from world ",  filters, filter)
+		  if ( filters.length > 1 ) {
+		      for (var i = 0; i < filters.length; i++) {
+			  if (filters[i] <= filter && filters[i] >= filter) {
+			      filters.splice(i, 1);
+			      break;
+			  }
+		      }
+		  }
+		  return filters;
+	      }).title(function (d) {
+                  return "Country: " + d.key + "\nActive Cases: " + (d.value ? d.value : 0);
+              });
+
+	  worldChart.on('postRender', chart => {
+	      const zoom = d3.zoom();
+	      zoom.on('zoom', () => {
+		  const {k, x, y} = d3.event.transform;
+		  chart.select('g.layer0')
+		      .attr('transform', `translate(${x},${y}) scale(${k})`)
+	      })
+	      chart.svg().call(zoom);
+	  });
+
+	  worldChart.on("renderlet.somename", function(chart) {
+	      console.log("clickmaybe!");
+	      chart.selectAll('g.state').on("click", function(d) {
+		  console.log("click!", d);
+		  //chart.filter(d.key);
+		  chart.redrawGroup()
+		  activeByCountryChart.filter(cc(d.properties.name));
+		  activeByCountryChart.redrawGroup()
+		  update_selected(table, chart.filters())
+	      });
+	  });
+
+
+	  activeByCountryChart
+	      .width(180)
+	      .height(2680)
+	      .margins({top: 20, left: 10, right: 10, bottom: 20})
+	      .dimension(countryDim)
+	      .group(activeByCountryGroup)
+	      .label(d => d.key)
+	      .othersGrouper(false)
+	      .title(d => d.value)
+	      .elasticX(true)
+	      .removeFilterHandler(function (filters, filter) {
+		  if ( filters.length > 1 ) {
+		      for (var i = 0; i < filters.length; i++) {
+			  if (filters[i] <= filter && filters[i] >= filter) {
+			      filters.splice(i, 1);
+			      break;
+			  }
+		      }
+		  }
+		  return filters;
+	      })
+	      .xAxis().ticks(4);
+
+	  activeByCountryChart.on("renderlet.somename", function(chart) {
+	      console.log("clickmaybe!");
+	      chart.selectAll('g.row').on("click", function(d) {
+		  console.log("click!", d);
+		  //chart.filter(d.key);
+		  //chart.redrawGroup()
+		  worldChart.filter(d.key);
+		  worldChart.redrawGroup()
+		  update_selected(table, chart.filters())
+	      });
+	  });
+
+	  countryDim.filter("US");
+
+	  activeByDateChart
+	      .width(800)
+	      .height(200)
+              .margins({top: 30, right: 50, bottom: 25, left: 70})
+	      .dimension(countryDateDim)
+	      .seriesAccessor(function(d) { return d.key[0]; })
+	      .keyAccessor(function(d)  { return d.key[1];})
+	      .group(activeByCountryDate)
+	      .elasticY(true)
+	      .xAxisLabel("")
+	      .yAxisLabel("active cases")
+	      .title(d => "active cases")
+	      .x(d3.scaleTime().domain([minDate, maxDate]))
+	      .renderHorizontalGridLines(true)
+	      .renderVerticalGridLines(true)
+	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
+	      .brushOn(false);
+
+	  newConfirmedByDateChart
+	      .width(800)
+	      .height(200)
+              .margins({top: 30, right: 50, bottom: 25, left: 70})
+	      .dimension(countryDateDim)
+	      .group(newConfirmedByCountryDate)
+	      .seriesAccessor(function(d) { return d.key[0]; })
+	      .keyAccessor(function(d)  { return d.key[1];})
+	      .elasticY(true)
+	      .xAxisLabel("")
+	      .yAxisLabel("new Confirmed Cases")
+	      .x(d3.scaleTime().domain([minDate, maxDate]))
+	      .renderHorizontalGridLines(true)
+	      .renderVerticalGridLines(true)
+	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
+	      .brushOn(false);
+
+	  newDeathsByDateChart
+	      .width(800)
+	      .height(200)
+              .margins({top: 30, right: 50, bottom: 25, left: 70})
+	      .dimension(countryDateDim)
+	      .group(newDeathsByCountryDate)
+	      .seriesAccessor(function(d) { return d.key[0]; })
+	      .keyAccessor(function(d)  { return d.key[1];})
+	      .elasticY(true)
+	      .xAxisLabel("")
+	      .yAxisLabel("new Deaths")
+	      .x(d3.scaleTime().domain([minDate, maxDate]))
+	      .renderHorizontalGridLines(true)
+	      .renderVerticalGridLines(true)
+	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
+	      .brushOn(false);
+
+	  newRecoveredByDateChart
+	      .width(800)
+	      .height(200)
+              .margins({top: 30, right: 50, bottom: 25, left: 70})
+	      .dimension(countryDateDim)
+	      .group(newRecoveredByCountryDate)
+	      .seriesAccessor(function(d) { return d.key[0]; })
+	      .keyAccessor(function(d)  { return d.key[1];})
+	      .elasticY(true)
+	      .xAxisLabel("")
+	      .yAxisLabel("new Recovered")
+	      .x(d3.scaleTime().domain([minDate, maxDate]))
+	      .renderHorizontalGridLines(true)
+	      .renderVerticalGridLines(true)
+	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
+	      .brushOn(false);
+
+	  resetAll();
+
+      })
+
+    </script>
+  </body>
+</html>
