@@ -18,7 +18,6 @@ A simple Covid19 dashboard with dc.js.
 
 - Synchronizing the rowchart and the worldmap has been quite tricky, and probably is a bit buggy, but it seems to work.
 
- - Something is wrong with the data for Canada.
  - Some country names still have to be mapped between the worldmap and the rowchart.
 
 Pull requests welcome.

@@ -129,21 +129,29 @@
 		  var country = fields[0];
 		  var province = fields[1];
 		  var date = new Date(fields[2]);
-		  if ( mydata[key].hasOwnProperty("confirmed")
-		       &&  mydata[key].hasOwnProperty("deaths")
-		       &&  mydata[key].hasOwnProperty("recovered") ) {
-		      ndata.push( {
-			  "country": country,
-			  "province": province,
-			  "date": date,
-			  "confirmed": mydata[key]["confirmed"],
-			  "deaths": mydata[key]["deaths"],
-			  "recovered": mydata[key]["recovered"],
-			  "newConfirmed": mydata[key]["newConfirmed"],
-			  "newDeaths": mydata[key]["newDeaths"],
-			  "newRecovered": mydata[key]["newRecovered"]
-		      })
+		  if ( !  mydata[key].hasOwnProperty("confirmed") ) {
+		      mydata[key]["confirmed"] = 0;
+		      mydata[key]["newConfirmed"] = 0;
 		  }
+		  if ( !  mydata[key].hasOwnProperty("deaths") ) {
+		      mydata[key]["deaths"] = 0;
+		      mydata[key]["newDeaths"] = 0;
+		  }
+		  if ( !  mydata[key].hasOwnProperty("recovered") ) {
+		      mydata[key]["recovered"] = 0;
+		      mydata[key]["newRecovered"] = 0;
+		  }
+		  ndata.push( {
+		      "country": country,
+		      "province": province,
+		      "date": date,
+		      "confirmed": mydata[key]["confirmed"],
+		      "deaths": mydata[key]["deaths"],
+		      "recovered": mydata[key]["recovered"],
+		      "newConfirmed": mydata[key]["newConfirmed"],
+		      "newDeaths": mydata[key]["newDeaths"],
+		      "newRecovered": mydata[key]["newRecovered"]
+		  })
 	      }
 	  }
 	  delete mydata;
@@ -299,7 +307,6 @@
 	      .group(activeByCountryGroup)
 	      .label(d => d.key)
 	      .othersGrouper(false)
-	      .title(d => d.value)
 	      .elasticX(true)
 	      .removeFilterHandler(function (filters, filter) {
 		  if ( filters.length > 1 ) {
@@ -339,7 +346,6 @@
 	      .elasticY(true)
 	      .xAxisLabel("")
 	      .yAxisLabel("active cases")
-	      .title(d => "active cases")
 	      .x(d3.scaleTime().domain([minDate, maxDate]))
 	      .renderHorizontalGridLines(true)
 	      .renderVerticalGridLines(true)
