@@ -90,7 +90,6 @@
 	  d3.json("https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json")
       ]).then( files => {
 	  mydata = {};
-	  const keylist = ["confirmed", "deaths", "recovered"];
 	  worldJson = files[3];
 
 	  resetAll = function() {
@@ -101,6 +100,7 @@
 	      dc.renderAll();
 	  }
 
+	  const keylist = ["confirmed", "deaths", "recovered"];
 	  for (var i in keylist) {
 	      cname = keylist[i];
 	      files[i].forEach(d => {
@@ -114,7 +114,7 @@
 		  delete d["Province/State"];
 		  delete d["Lat"];
 		  delete d["Long"];
-		  key_ = country + "," + province + "," ;
+		  key_ = country + ",," ;//+ province + "," ;
 		  var old_val = 0;
 		  var old_key = "";
 		  var val7 = [0,0,0,0,0,0,0];
@@ -129,9 +129,14 @@
 
 
 			  }
-			  mydata[mykey][cname] = val;
-			  mydata[mykey]["new" + cname.charAt(0).toUpperCase() + cname.slice(1)] = val - old_val;
-			  mydata[mykey]["new7" + cname.charAt(0).toUpperCase() + cname.slice(1)] = val - val7[0];
+			  if ( ! mydata[mykey].hasOwnProperty(cname) ) {
+			      mydata[mykey][cname] = 0;
+			      mydata[mykey]["new" + cname.charAt(0).toUpperCase() + cname.slice(1)] = 0;
+			      mydata[mykey]["new7" + cname.charAt(0).toUpperCase() + cname.slice(1)] = 0;
+			  }
+			  mydata[mykey][cname] += val;
+			  mydata[mykey]["new" + cname.charAt(0).toUpperCase() + cname.slice(1)] += val - old_val;
+			  mydata[mykey]["new7" + cname.charAt(0).toUpperCase() + cname.slice(1)] += val - val7[0];
 			  val7.push(val);
 			  val7.splice(0,1);
 			  old_val = val;
@@ -316,7 +321,7 @@
 	  });
 
 	  worldChart.on("renderlet.somename", function(chart) {
-	      console.log("clickmaybe!");
+	      console.log("clickmaybe worldchart!");
 	      chart.selectAll('g.state').on("click", function(d) {
 		  console.log("click!", d);
 		  //chart.filter(d.key);
@@ -351,7 +356,7 @@
 	      .xAxis().ticks(4);
 
 	  activeByCountryChart.on("renderlet.somename", function(chart) {
-	      console.log("clickmaybe!");
+	      console.log("clickmaybe renderlet!");
 	      chart.selectAll('g.row').on("click", function(d) {
 		  console.log("click!", d);
 		  //chart.filter(d.key);
