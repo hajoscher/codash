@@ -49,11 +49,12 @@
 </head>
 <body>
   <div id="world" style="float: left;"></div>
-  <div id="newcases" style="float: left;"></div>
-  <div id="vacc" style="clear: left;"></div>
+  <div id="newcases" style="clear: right;"></div>
+  <div id="vacc1" style="float: left;"></div>
+  <div id="vacc2" style="clear: right;"></div>
   <script>
 
-    var width = 500,
+    var width = 400,
         height = 300;
 
     var svg = d3.select("#world")
@@ -62,8 +63,8 @@
           .attr( "height", height );
 
     var projection = d3.geoEquirectangular()
-        .scale(170)
-        .translate([width / 2, height / 2]);
+        .scale(150)
+        .translate([width / 2, height*2/3]);
 
     var geoPath = d3.geoPath()
         .projection(projection);
@@ -101,21 +102,25 @@
 	}
     }
 
-    function func2(mydata) {
-	f = d3.timeParse("%Y-%m-%d")
-	var new_data= new DefaultDict(Object)
-	mydata.forEach( function(dd) {
-	    new_data[dd.date]['date'] = f(dd.date);
-	    new_data[dd.date][dd.location] = +dd['people_vaccinated_per_hundred'];
-	})
-	ar = []
-	for (var d in new_data) {
-	    ar.push(new_data[d])
+    function func2(selector) {
+	return function func2(mydata) {
+	    f = d3.timeParse("%Y-%m-%d")
+	    var new_data= new DefaultDict(Object)
+	    mydata.forEach( function(dd) {
+		new_data[dd.date]['date'] = f(dd.date);
+		new_data[dd.date][dd.location] = +dd[selector];
+	    })
+	    ar = []
+	    for (var d in new_data) {
+		ar.push(new_data[d])
+	    }
+	    nnn  = ar.sort((a,b) => (a.date - b.date));
+	    return nnn;
 	}
-	nnn  = ar.sort((a,b) => (a.date - b.date));
-	return nnn;
     }
-    myplot2 = time_series("#vacc", fvacc, func2, "percent vaccinated" );
+
+    myplot2 = time_series("#vacc1", fvacc, func2('people_vaccinated_per_hundred'), "percent vaccinated at least once" );
+    myplot3 = time_series("#vacc2", fvacc, func2('people_fully_vaccinated_per_hundred'), "percent fully vaccinated" );
 
     d3.queue()
     .defer(d3.json, "https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json")
@@ -153,6 +158,7 @@
 		console.log(csel);
 		myplot.update();
 		myplot2.update();
+		myplot3.update();
 	    });
 
 	var zoom = d3.zoom()
@@ -307,6 +313,7 @@
 					d3.select("#world").selectAll(".selected").filter(d=> cc(d.properties.name)==c).attr("class", "country");
 					myplot.update()
 					myplot2.update()
+					myplot3.update()
 					;})
 	    g.text(function(d,i) {console.log("legend", d,i); return d})
 	}
