@@ -1,464 +1,326 @@
-<!DOCTYPE html>
-<meta http-equiv="content-type" content="text/html; charset=UTF8">
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>codash</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/4.10.0/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-queue/3.0.7/d3-queue.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.0/topojson.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
+    <link href="http://fonts.googleapis.com/css?family=Montserrat" rel="stylesheet" type="text/css">
+<style>
+    body {
+        padding: 0;
+        margin: 0;
+        background: whitesmoke;
+    }
+    h1 {
+        position: absolute;
+        left: 20px;
+        top: 10px;
+        font-family: "Proxima Nova", Montserrat, sans-serif;
+        font-size: 2em;
+        font-weight: 100;
+        color: #005DAA; /* offical UK Kentucky blue */
+    }
+    .country {
+      stroke: #000;
+      fill:#AAA;
+    }
+    .country.selected {
+      stroke: #888;
+      fill:#446;
+    }
+    .xgrid line,.ygrid line {
+	stroke: lightgrey;
+	opacity: 0.5;
+	stroke-width: .5;
+    }
+    .xgrid path,.ygrid path {
+	stroke-width: 0;
+    }
+    .legend {
+	font-size: 0.7em;
+    }
+    path.country {
+	stroke: #000;
+	stroke-width: 0.3;
+    }
+</style>
+</head>
+<body>
+  <div id="world" style="float: left;"></div>
+  <div id="newcases" style="float: left;"></div>
+  <div id="vacc" style="clear: left;"></div>
+  <script>
 
-<html lang = "en">
-  <head>
-    <script src = "js/d3.js"></script>
-    <script src = "js/crossfilter.js"></script>
-    <script src = "js/dc.js"></script>
-    <script src = "js/reductio.min.js"></script>
-    <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
-    <link rel="stylesheet" type="text/css" href="css/dc.css">
-    <style>
-      .dc-chart { font-size: 12px; }
-      .dc-table-group { padding-left: 10px; font-size: 14px; font-weight: bold; }
-      .dc-table-column { padding-left: 10px; font-size: 12px; font-weight: normal; }
-      .dc-chart g.row text {fill: black;}
-      .dc-chart g.state path {
-	  stroke: #2b2222;
-	  stroke-width: 0.3;
-      }
-    </style>
-  </head>
+    var width = 500,
+        height = 300;
 
-  <body>
-    <a
-       href='javascript:resetAll();'>reset all</a>
-    <div id="loading">
-      <H1>loading data please wait</H1>
-    </div>
-    <div id='world-chart' style='float: left;'></div>
-    <div id='active-country-chart' style='float: right;'>
-      <a class='reset'
-         href='javascript:dc.redrawAll();'
-         style='visibility: hidden;'></a>
-    </div>
-    <div id='selected-countries' style='float: right;'></div>
-    <div id='newconfirmed-date-chart-7' style='float: left;'>
-      <a class='reset'
-         href='javascript:activeByDateChart7Days.filterAll(); dc.redrawAll();'
-         style='visibility: hidden;'></a>
-    </div>
-    <div id='active-date-chart' style='float: left;'>
-      <a class='reset'
-         href='javascript:activeByDateChart.filterAll(); dc.redrawAll();'
-         style='visibility: hidden;'></a>
-    </div>
-    <div id='newconfirmed-date-chart' style='float: left;'>
-      <a class='reset'
-         href='javascript:newConfirmedByDateChart.filterAll(); dc.redrawAll();'
-         style='visibility: hidden;'></a>
-    </div>
+    var svg = d3.select("#world")
+          .append( "svg" )
+          .attr( "width", width )
+          .attr( "height", height );
 
-    <div id='newdeaths-date-chart' style='float: left;'>
-      <a class='reset'
-         href='javascript:newDeathsByDateChart.filterAll(); dc.redrawAll();'
-         style='visibility: hidden;'></a>
-    </div>
-    <div id='newrecovered-date-chart' style='float: left;'>
-      <a class='reset'
-         href='javascript:activeByDateChart.filterAll(); dc.redrawAll();'
-         style='visibility: hidden;'></a>
-    </div>
+    var projection = d3.geoEquirectangular()
+        .scale(170)
+        .translate([width / 2, height / 2]);
 
-    <div style = "clear: both">
-      <div id = "country-table"></div>
-    </div>
+    var geoPath = d3.geoPath()
+        .projection(projection);
 
+    csel = [];
 
-    <script>
+    fvacc = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/vaccinations/vaccinations.csv";
+    fnew  = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/jhu/new_cases.csv";
+    function func(mydata) {
+	f = d3.timeParse("%Y-%m-%d")
+	new_data = [];
+	mydata.forEach( function(dd) {
+	    for( var k in dd){
+		if (k == "date") {
+		    dd['date'] = f(dd['date']);
+		} else {
+		    dd[k] = +dd[k];
+		}
+	    }
+	    new_data.push(dd);
+	})
+	return new_data;
+    }
+    myplot  = time_series("#newcases", fnew, func, "New Cases per 7days/100k");
 
-      var worldChart = new dc.GeoChoroplethChart("#world-chart");
+    class DefaultDict {
+	constructor(defaultInit) {
+	    return new Proxy({}, {
+		get: (target, name) => name in target ?
+		    target[name] :
+		    (target[name] = typeof defaultInit === 'function' ?
+		     new defaultInit().valueOf() :
+		     defaultInit)
+	    })
+	}
+    }
 
-      activeByCountryChart = new dc.RowChart('#active-country-chart');
-      activeByDateChart = new dc.SeriesChart("#active-date-chart");
-      newConfirmedByDateChart = new dc.SeriesChart("#newconfirmed-date-chart");
-      newConfirmedByDateChart7Days = new dc.SeriesChart("#newconfirmed-date-chart-7");
-      newDeathsByDateChart = new dc.SeriesChart("#newdeaths-date-chart");
-      newRecoveredByDateChart = new dc.SeriesChart("#newrecovered-date-chart");
+    function func2(mydata) {
+	f = d3.timeParse("%Y-%m-%d")
+	var new_data= new DefaultDict(Object)
+	mydata.forEach( function(dd) {
+	    new_data[dd.date]['date'] = f(dd.date);
+	    new_data[dd.date][dd.location] = +dd['people_vaccinated_per_hundred'];
+	})
+	ar = []
+	for (var d in new_data) {
+	    ar.push(new_data[d])
+	}
+	nnn  = ar.sort((a,b) => (a.date - b.date));
+	return nnn;
+    }
+    myplot2 = time_series("#vacc", fvacc, func2, "percent vaccinated" );
 
-      fname0 = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
-      fname1 = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
-      fname2 = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv"
-      population = {"Afghanistan":37172386,"Albania":2866376,"Algeria":42228429,"American Samoa":55465,"Andorra":77006,"Angola":30809762,"Antigua and Barbuda":96286,"Arab World":419790588,"Argentina":44494502,"Armenia":2951776,"Aruba":105845,"Australia":24982688,"Austria":8840521,"Azerbaijan":9939800,"Bahamas, The":385640,"Bahrain":1569439,"Bangladesh":161356039,"Barbados":286641,"Belarus":9483499,"Belgium":11433256,"Belize":383071,"Benin":11485048,"Bermuda":63973,"Bhutan":754394,"Bolivia":11353142,"Bosnia and Herzegovina":3323929,"Botswana":2254126,"Brazil":209469333,"British Virgin Islands":29802,"Brunei Darussalam":428962,"Bulgaria":7025037,"Burkina Faso":19751535,"Burundi":11175378,"Cabo Verde":543767,"Cambodia":16249798,"Cameroon":25216237,"Canada":37057765,"Caribbean small states":7358965,"Cayman Islands":64174,"Central African Republic":4666377,"Central Europe and the Baltics":102511922,"Chad":15477751,"Channel Islands":170499,"Chile":18729160,"China":1392730000,"Colombia":49648685,"Comoros":832322,"Congo, Dem. Rep.":84068091,"Congo, Rep.":5244363,"Costa Rica":4999441,"Cote d'Ivoire":25069229,"Croatia":4087843,"Cuba":11338138,"Curacao":159800,"Cyprus":1189265,"Czechia":10629928,"Denmark":5793636,"Djibouti":958920,"Dominica":71625,"Dominican Republic":10627165,"Early-demographic dividend":3249140605,"East Asia & Pacific":2328220870,"East Asia & Pacific (IDA & IBRD countries)":2056064424,"East Asia & Pacific (excluding high income)":2081651801,"Ecuador":17084357,"Egypt, Arab Rep.":98423595,"El Salvador":6420744,"Equatorial Guinea":1308974,"Eritrea":3213972,"Estonia":1321977,"Eswatini":1136191,"Ethiopia":109224559,"Euro area":341783171,"Europe & Central Asia":918793590,"Europe & Central Asia (IDA & IBRD countries)":459865205,"Europe & Central Asia (excluding high income)":417797257,"European Union":446786293,"Faroe Islands":48497,"Fiji":883483,"Finland":5515525,"Fragile and conflict affected situations":743958386,"France":66977107,"French Polynesia":277679,"Gabon":2119275,"Gambia, The":2280102,"Georgia":3726549,"Germany":82905782,"Ghana":29767108,"Gibraltar":33718,"Greece":10731726,"Greenland":56025,"Grenada":111454,"Guam":165768,"Guatemala":17247807,"Guinea":12414318,"Guinea-Bissau":1874309,"Guyana":779004,"Haiti":11123176,"Heavily indebted poor countries (HIPC)":780234406,"High income":1210312147,"Honduras":9587522,"Hong Kong SAR, China":7451000,"Hungary":9775564,"IBRD only":4772284113,"IDA & IBRD total":6412522234,"IDA blend":555830605,"IDA only":1084407516,"IDA total":1640238121,"Iceland":352721,"India":1352617328,"Indonesia":267663435,"Iran, Islamic Rep.":81800269,"Iraq":38433600,"Ireland":4867309,"Isle of Man":84077,"Israel":8882800,"Italy":60421760,"Jamaica":2934855,"Japan":126529100,"Jordan":9956011,"Kazakhstan":18272430,"Kenya":51393010,"Kiribati":115847,"Korea, Dem. People\u2019s Rep.":25549819,"Korea; South":51606633,"Kosovo":1845300,"Kuwait":4137309,"Kyrgyz Republic":6322800,"Lao PDR":7061507,"Late-demographic dividend":2288665963,"Latin America & Caribbean":641357515,"Latin America & Caribbean (excluding high income)":609013934,"Latin America & the Caribbean (IDA & IBRD countries)":625569713,"Latvia":1927174,"Least developed countries: UN classification":1009662578,"Lebanon":6848925,"Lesotho":2108132,"Liberia":4818977,"Libya":6678567,"Liechtenstein":37910,"Lithuania":2801543,"Low & middle income":6383958209,"Low income":705417321,"Lower middle income":3022905169,"Luxembourg":607950,"Macao SAR, China":631636,"Madagascar":26262368,"Malawi":18143315,"Malaysia":31528585,"Maldives":515696,"Mali":19077690,"Malta":484630,"Marshall Islands":58413,"Mauritania":4403319,"Mauritius":1265303,"Mexico":126190788,"Micronesia, Fed. Sts.":112640,"Middle East & North Africa":448912859,"Middle East & North Africa (IDA & IBRD countries)":378327628,"Middle East & North Africa (excluding high income)":382896715,"Middle income":5678540888,"Moldova":2706049,"Monaco":38682,"Mongolia":3170208,"Montenegro":622227,"Morocco":36029138,"Mozambique":29495962,"Myanmar":53708395,"Namibia":2448255,"Nauru":12704,"Nepal":28087871,"Netherlands":17231624,"New Caledonia":284060,"New Zealand":4841000,"Nicaragua":6465513,"Niger":22442948,"Nigeria":195874740,"North America":364290258,"North Macedonia":2082958,"Northern Mariana Islands":56882,"Norway":5311916,"OECD members":1303529456,"Oman":4829483,"Other small states":30758989,"Pacific island small states":2457367,"Pakistan":212215030,"Palau":17907,"Panama":4176873,"Papua New Guinea":8606316,"Paraguay":6956071,"Peru":31989256,"Philippines":106651922,"Poland":37974750,"Portugal":10283822,"Post-demographic dividend":1109997273,"Pre-demographic dividend":919485393,"Puerto Rico":3195153,"Qatar":2781677,"Romania":19466145,"Russia":144478050,"Rwanda":12301939,"Samoa":196130,"San Marino":33785,"Sao Tome and Principe":211028,"Saudi Arabia":33699947,"Senegal":15854360,"Serbia":6982604,"Seychelles":96762,"Sierra Leone":7650154,"Singapore":5638676,"Sint Maarten (Dutch part)":40654,"Slovakia":5446771,"Slovenia":2073894,"Small states":40575321,"Solomon Islands":652858,"Somalia":15008154,"South Africa":57779622,"South Asia":1814388744,"South Asia (IDA & IBRD)":1814388744,"South Sudan":10975920,"Spain":46796540,"Sri Lanka":21670000,"St. Kitts and Nevis":52441,"St. Lucia":181889,"St. Martin (French part)":37264,"St. Vincent and the Grenadines":110210,"Sub-Saharan Africa":1078306520,"Sub-Saharan Africa (IDA & IBRD countries)":1078306520,"Sub-Saharan Africa (excluding high income)":1078209758,"Sudan":41801533,"Suriname":575991,"Sweden":10175214,"Switzerland":8513227,"Syrian Arab Republic":16906283,"Tajikistan":9100837,"Tanzania":56318348,"Thailand":69428524,"Timor-Leste":1267972,"Togo":7889094,"Tonga":103197,"Trinidad and Tobago":1389858,"Tunisia":11565204,"Turkey":82319724,"Turkmenistan":5850908,"Turks and Caicos Islands":37665,"Tuvalu":11508,"Uganda":42723139,"Ukraine":44622516,"United Arab Emirates":9630959,"United Kingdom":66460344,"US":326687501,"Upper middle income":2655635719,"Uruguay":3449299,"Uzbekistan":32955400,"Vanuatu":292680,"Venezuela, RB":28870195,"Vietnam":95540395,"Virgin Islands (U.S.)":106977,"West Bank and Gaza":4569087,"World":7594270356,"Yemen, Rep.":28498687,"Zambia":17351822,"Zimbabwe":14439018};
+    d3.queue()
+    .defer(d3.json, "https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json")
+    .await(ready);
 
-      mydata = {};
-      Promise.all([
-	  d3.csv(fname0),
-	  d3.csv(fname1),
-	  d3.csv(fname2),
-	  d3.json("https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json")
-      ]).then( files => {
-	  mydata = {};
-	  worldJson = files[3];
+    var cc = function(country) {
+	const correction = {"United States of America": "United States",
+			    "Czech Republic": "Czechia",
+			    "Republic of Serbia": "Serbia",
+			    "Macedonia": "North Macedonia",
+			    "Republic of the Congo": "Congo (Brazzaville)",
+			    "Democratic Republic of the Congo": "Congo (Kinshasa)"
+			   };
+	return  correction.hasOwnProperty(country) ? correction[country] : country;
+    }
 
-	  resetAll = function() {
-	      dc.filterAll()
-	      activeByCountryChart.filter(["US"])
-	      worldChart.filter(["US"])
-	      update_selected(table, ["US"])
-	      dc.renderAll();
-	  }
+    function ready(error, countries){
+	var g = svg.append("g");
+        g.selectAll("path")
+            .data( countries.features)
+            .enter()
+            .append("path")
+            .attr( "d", geoPath )
+            .attr("class","country")
+	    .on('click', function(d){
+		var c = cc(d.properties.name);
+		var i = csel.indexOf(c);
+		if ( i <0 ) {
+		    csel.push(c)
+		    d3.select(this).attr('class','country selected');
+		} else {
+		    csel.splice(i, 1);
+		    d3.select(this).attr('class','country');
+		}
+		console.log(csel);
+		myplot.update();
+		myplot2.update();
+	    });
 
-	  const keylist = ["confirmed", "deaths", "recovered"];
-	  for (var i in keylist) {
-	      cname = keylist[i];
-	      files[i].forEach(d => {
-		  country = d["Country/Region"];
-		  province = d["Province/State"];
-		  province = province.replace(/,/g ,";");
-		  country = country.replace(/,/g ,";");
-		  lat = d["Lat"];
-		  lon = d["Long"];
-		  delete d["Country/Region"];
-		  delete d["Province/State"];
-		  delete d["Lat"];
-		  delete d["Long"];
-		  key_ = country + ",," ;//+ province + "," ;
-		  var old_val = 0;
-		  var old_key = "";
-		  var val7 = [0,0,0,0,0,0,0];
-		  for (var date in d) {
-		      if (d.hasOwnProperty(date)) {
-			  var mykey = key_ + date
-			  if ( ! mydata.hasOwnProperty(mykey) ) {
-			      mydata[mykey] = {};
-			  }
-			  var val = +d[date];
-			  if ( val < old_val ) {
+	var zoom = d3.zoom()
+	    .scaleExtent([1, 8])
+	    .on('zoom', function() {
+		g.selectAll('path')
+		    .attr('transform', d3.event.transform);
+		g.selectAll("circle")
+		    .attr('transform', d3.event.transform);
+	    });
 
+	svg.call(zoom);
 
-			  }
-			  if ( ! mydata[mykey].hasOwnProperty(cname) ) {
-			      mydata[mykey][cname] = 0;
-			      mydata[mykey]["new" + cname.charAt(0).toUpperCase() + cname.slice(1)] = 0;
-			      mydata[mykey]["new7" + cname.charAt(0).toUpperCase() + cname.slice(1)] = 0;
-			  }
-			  mydata[mykey][cname] += val;
-			  mydata[mykey]["new" + cname.charAt(0).toUpperCase() + cname.slice(1)] += val - old_val;
-			  mydata[mykey]["new7" + cname.charAt(0).toUpperCase() + cname.slice(1)] += val - val7[0];
-			  val7.push(val);
-			  val7.splice(0,1);
-			  old_val = val;
-			  old_key = key;
-		      }
-		  }
-	      })
-	  }
-	  ndata = []
-	  for (var key in mydata) {
-	      if (mydata.hasOwnProperty(key)) {
-		  fields = key.split(",")
-		  var country = fields[0];
-		  var province = fields[1];
-		  var date = new Date(fields[2]);
-		  if ( !  mydata[key].hasOwnProperty("confirmed") ) {
-		      mydata[key]["confirmed"] = 0;
-		      mydata[key]["newConfirmed"] = 0;
-		  }
-		  if ( !  mydata[key].hasOwnProperty("deaths") ) {
-		      mydata[key]["deaths"] = 0;
-		      mydata[key]["newDeaths"] = 0;
-		  }
-		  if ( !  mydata[key].hasOwnProperty("recovered") ) {
-		      mydata[key]["recovered"] = 0;
-		      mydata[key]["newRecovered"] = 0;
-		  }
-		  var new7 = mydata[key]["new7Confirmed"] / population[country] * 100000;
-		  if ( new7 < 0.01 ) {new7=0;}
-		  ndata.push( {
-		      "country": country,
-		      "province": province,
-		      "date": date,
-		      "confirmed": mydata[key]["confirmed"],
-		      "deaths": mydata[key]["deaths"],
-		      "recovered": mydata[key]["recovered"],
-		      "newConfirmed": mydata[key]["newConfirmed"],
-		      "new7Confirmed": new7,
-		      "newDeaths": mydata[key]["newDeaths"],
-		      "newRecovered": mydata[key]["newRecovered"]
-		  })
-	      }
-	  }
-	  delete mydata;
-	  delete files;
-	  ndx = crossfilter(ndata);
-
-	  table = d3.select("#selected-countries")
-	      .append("div").style("float", "left")
-	      .text("selected countries (click to remove)")
-
-	  update_selected = function (table, data) {
-	      console.log("trying update", data);
-	      u = table.selectAll("div.countries")
-		  .data(data)
-	      u.enter().append("div").text(d=>d).attr("class", "countries")
-	      u.text(d => d);
-	      u.exit().remove();
-	      table.selectAll("div.countries").on("click", d=> {
-		  activeByCountryChart.filter(d).redrawGroup();
-		  worldChart.filter(d).redrawGroup();
-		  update_selected(table, activeByCountryChart.filters());
-	      });
-	  }
-
-	  countryDim = ndx.dimension(d => d.country);
-	  activeByCountryGroup = countryDim.group().reduceSum(d => d.newConfirmed - d.newDeaths - d.newRecovered);
-	  dateDim = ndx.dimension(d => d.date);
-
-	  function remove_empty_bins(source_group) {
-	      return {
-		  all:function () {
-		      countries = {}
-		      activeByCountryChart.filters().forEach(d => countries[d] = 1)
-		      return source_group.all().filter(function(d) {
-
-			  return Math.abs(d.value) > 0.1; // if using floating-point numbers
-			  //return d.value !== 0; // if integers only
-		      });
-		  }
-	      };
-	  }
-
-	  countryDateDim = ndx.dimension(d => [d.country, d.date]);
-	  activeByCountryDate = remove_empty_bins(countryDateDim.group()
-						  .reduceSum(d => d.confirmed -
-							     d.deaths - d.recovered));
-	  newConfirmedByCountryDate = remove_empty_bins(countryDateDim.group()
-						  .reduceSum(d => d.newConfirmed));
-	  newConfirmedByCountryDate7Days = remove_empty_bins(countryDateDim.group()
-						  .reduceSum(d => d.new7Confirmed));
-	  newDeathsByCountryDate = remove_empty_bins(countryDateDim.group()
-						  .reduceSum(d => d.newDeaths));
-	  newRecoveredByCountryDate = remove_empty_bins(countryDateDim.group()
-						  .reduceSum(d => d.newRecovered));
-
-	  minDate = dateDim.bottom(1)[0].date;
-	  maxDate = dateDim.top(1)[0].date;
-
-	  projection = d3.geoMercator()
-	      .center([20,40])
-	      .scale(120)
-	      .rotate([-12,0]);
-	  // projection =  d3.geoOrthographic().rotate([-222,0])
-
-	  zoom = d3.zoom()
-		.scaleExtent([1, 8])
-		.on("zoom", move);
+    }
 
 
-	  function move() {
+    function time_series(anchor, url, func_, title) {
+	var margin, width, height, svg, x, y, data;
+	margin = { top: 20, right: 20, bottom: 40, left: 50 };
+	width = 400 - margin.left - margin.right;
+	height = 300 - margin.top - margin.bottom;
+	d3.csv(url, function(error, mydata) {
+	    data = func_(mydata);
+	    console.log(data)
+	    chart()
+	});
+	svg = d3.select(anchor)
+	    .append("svg")
+	    .attr("width", width + margin.left + margin.right)
+	    .attr("height", height + margin.top + margin.bottom)
+	    .append("g")
+	    .attr("transform",
+		  "translate(" + margin.left + "," + margin.top + ")");
 
-	      var t = d3.event.translate;
-	      var s = d3.event.scale;
-	      console.log(s,t);
-	      var height = 800;
-	      var width = 600;
-	      var h = height / 3;
+	svg.append("g").attr("class", "xaxis");
+	svg.append("g").attr("class", "yaxis");
+	svg.append("g").attr("class", "xgrid");
+	svg.append("g").attr("class", "ygrid");
+	svg.append("g").attr("class", "legend");
+	svg.append("g").append("text")
+	    .attr("y", -5)
+	    .attr("x", margin.left + 40 )
+	    .attr("font-size", "0.7em")
+	    .style("text-anchor", "middle")
+	    .text(title);
 
-
-	      t[0] = Math.min(width / 2 * (s - 1), Math.max(width / 2 * (1 - s), t[0]));
-	      t[1] = Math.min(height / 2 * (s - 1) + h * s, Math.max(height / 2 * (1 - s) - h * s, t[1]));
-
-	      //zoom.translate(t);
-	      zoom.rotate(t);
-	      //g.style("stroke-width", 1 / s).attr("transform", "translate(" + t + ")scale(" + s + ")");
-
-}
-
-	  // correct country
-          // country names of data and geojson
-          var cc = function(country) {
-	      const correction = {"United States of America": "US",
-				  "South Korea": "Korea; South",
-				  "Czech Republic": "Czechia",
-				  "Republic of Serbia": "Serbia",
-				  "Macedonia": "North Macedonia",
-				  "Republic of the Congo": "Congo (Brazzaville)",
-				  "Democratic Republic of the Congo": "Congo (Kinshasa)"
-				 };
-	      return  correction.hasOwnProperty(country) ? correction[country] : country;
-	  }
-          worldChart.width(800)
-              .height(500)
-              .dimension(countryDim)
-              .group(activeByCountryGroup)
-              .colors(d3.scaleQuantize().range(["#E2F2FF", "#C4E4FF", "#9ED2FF", "#81C5FF", "#6BBAFF", "#51AEFF", "#36A2FF", "#1E96FF", "#0089FF", "#0061B5"]))
-              .colorDomain([0, 200])
-              .colorCalculator(function (d) { return d ? worldChart.colors()(d) : '#ccc'; })
-              .overlayGeoJson(worldJson.features, "state", function (d) {
-                 return cc(d.properties.name);
-              })
-              .projection(projection)
-              .valueAccessor(function(kv) {
-                  return kv.value;
-              }).keyAccessor(function(kv) {
-                  return kv.key;
-              })
-	      .removeFilterHandler(function (filters, filter) {
-		  console.log("remove from world ",  filters, filter)
-		  if ( filters.length > 1 ) {
-		      for (var i = 0; i < filters.length; i++) {
-			  if (filters[i] <= filter && filters[i] >= filter) {
-			      filters.splice(i, 1);
-			      break;
-			  }
-		      }
-		  }
-		  return filters;
-	      }).title(function (d) {
-                  return "Country: " + d.key + "\nActive Cases: " + (d.value ? d.value : 0);
-              });
-
-	  worldChart.on('postRender', chart => {
-	      const zoom = d3.zoom();
-	      zoom.on('zoom', () => {
-		  const {k, x, y} = d3.event.transform;
-		  chart.select('g.layer0')
-		      .attr('transform', `translate(${x},${y}) scale(${k})`)
-	      })
-	      chart.svg().call(zoom);
-	  });
-
-	  worldChart.on("renderlet.somename", function(chart) {
-	      console.log("clickmaybe worldchart!");
-	      chart.selectAll('g.state').on("click", function(d) {
-		  console.log("click!", d);
-		  //chart.filter(d.key);
-		  chart.redrawGroup()
-		  activeByCountryChart.filter(cc(d.properties.name));
-		  activeByCountryChart.redrawGroup()
-		  update_selected(table, chart.filters())
-	      });
-	  });
+	function chart () {
+	    var newCases = []
+	    for (var s in csel) {
+		var country = csel[s];
+		var val7 = [0,0,0,0,0,0,0];
+		var v,val=0;
+		if ( anchor == "#newcases" ) {
+		    newCases.push( data.map( function( x,i) {
+			if ( ! x.hasOwnProperty(country)) {
+			    v = 0;
+			} else {
+			    v = x[country]*1e5/population[country]
+			}
+			val += v;
+			val -= val7[0];
+			val7.push(v);
+			val7.splice(0,1);
+			return {'date': x.date, 'value': val}
+		    }))
+		} else {
+		    v = 0;
+		    newCases.push( data.map( function( x,i) {
+			if ( x.hasOwnProperty(country)) {
+			    if ( x[country] != 0 ) {
+				v = x[country]
+			    }
+			}
+			return {'date': x.date, 'value': v}
+		    }))
+		}
+	    }
+	    console.log("newcases",anchor,data,anchor,newCases);
+	    // Add X axis --> it is a date format
+	    x = d3.scaleTime()
+		.domain(d3.extent(data, function(d) { return d.date; }))
+		.range([ 0, width ]);
+	    // Add Y axis
+	    y = d3.scaleLinear()
+		.domain([0, d3.max(newCases, function(d) {return d3.max(d, x=>x.value)  }) ])
+		.range([ height, 0 ]);
 
 
-	  activeByCountryChart
-	      .width(180)
-	      .height(2680)
-	      .margins({top: 20, left: 10, right: 10, bottom: 20})
-	      .dimension(countryDim)
-	      .group(activeByCountryGroup)
-	      .label(d => d.key)
-	      .othersGrouper(false)
-	      .elasticX(true)
-	      .removeFilterHandler(function (filters, filter) {
-		  if ( filters.length > 1 ) {
-		      for (var i = 0; i < filters.length; i++) {
-			  if (filters[i] <= filter && filters[i] >= filter) {
-			      filters.splice(i, 1);
-			      break;
-			  }
-		      }
-		  }
-		  return filters;
-	      })
-	      .xAxis().ticks(4);
+	    // Add the line
+	    var g = svg.selectAll("path").filter(".myclass")
+		.data(newCases)
 
-	  activeByCountryChart.on("renderlet.somename", function(chart) {
-	      console.log("clickmaybe renderlet!");
-	      chart.selectAll('g.row').on("click", function(d) {
-		  console.log("click!", d);
-		  //chart.filter(d.key);
-		  //chart.redrawGroup()
-		  worldChart.filter(d.key);
-		  worldChart.redrawGroup()
-		  update_selected(table, chart.filters())
-	      });
-	  });
+	    colors = d3.schemeCategory10;
 
-	  countryDim.filter("US");
+	    g.exit().remove();
+	    g.enter()
+		.append("path").classed("myclass", true)
+		.attr("fill", "none")
+		.attr("stroke", function(d,i) {return colors[i];})
+		.attr("stroke-width", 1.5)
+		.attr("d", d3.line()
+		      .x(function(d) { return x(d.date) })
+		      .y(function(d) { return y(d.value)})
+		     )
+		.attr("data-legend",function(d,i) { return csel[i]})
 
-	  activeByDateChart
-	      .width(800)
-	      .height(200)
-              .margins({top: 30, right: 50, bottom: 25, left: 70})
-	      .dimension(countryDateDim)
-	      .seriesAccessor(function(d) { return d.key[0]; })
-	      .keyAccessor(function(d)  { return d.key[1];})
-	      .group(activeByCountryDate)
-	      .elasticY(true)
-	      .xAxisLabel("")
-	      .yAxisLabel("active cases")
-	      .x(d3.scaleTime().domain([minDate, maxDate]))
-	      .renderHorizontalGridLines(true)
-	      .renderVerticalGridLines(true)
-	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
-	      .brushOn(false);
+	    g.transition().duration(1000)
+		.attr("fill", "none")
+		.attr("stroke", function(d,i) {return colors[i]})
+		.attr("stroke-width", 1.5)
+		.attr("d", d3.line()
+		      .x(function(d) { return x(d.date) })
+		      .y(function(d) { return y(d.value)})
+		     )
+		.attr("data-legend",function(d,i) { return csel[i]})
 
-	  newConfirmedByDateChart
-	      .width(800)
-	      .height(200)
-              .margins({top: 30, right: 50, bottom: 25, left: 70})
-	      .dimension(countryDateDim)
-	      .group(newConfirmedByCountryDate)
-	      .seriesAccessor(function(d) { return d.key[0]; })
-	      .keyAccessor(function(d)  { return d.key[1];})
-	      .elasticY(true)
-	      .xAxisLabel("")
-	      .yAxisLabel("new Confirmed Cases")
-	      .x(d3.scaleTime().domain([minDate, maxDate]))
-	      .renderHorizontalGridLines(true)
-	      .renderVerticalGridLines(true)
-	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
-	      .brushOn(false);
+	    svg.select(".xaxis")
+		.attr("transform", "translate(0," + height + ")")
+		.transition().duration(1000).call(d3.axisBottom(x))
+		.selectAll("text")
+		.style("text-anchor", "end")
+		.attr("dx", "-.8em")
+		.attr("dy", ".15em")
+		.attr("transform", "rotate(-30)")
 
-	  newConfirmedByDateChart7Days
-	      .width(800)
-	      .height(200)
-              .margins({top: 30, right: 50, bottom: 25, left: 70})
-	      .dimension(countryDateDim)
-	      .group(newConfirmedByCountryDate7Days)
-	      .seriesAccessor(function(d) { return d.key[0]; })
-	      .keyAccessor(function(d)  { return d.key[1];})
-	      .elasticY(true)
-	      .xAxisLabel("")
-	      .yAxisLabel("new Cases / 7 days / 100k population")
-	      .x(d3.scaleTime().domain([minDate, maxDate]))
-	      .renderHorizontalGridLines(true)
-	      .renderVerticalGridLines(true)
-	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
-	      .brushOn(false);
+	    svg.select(".yaxis")
+		.transition().duration(1000).call(d3.axisLeft(y));
 
-	  newDeathsByDateChart
-	      .width(800)
-	      .height(200)
-              .margins({top: 30, right: 50, bottom: 25, left: 70})
-	      .dimension(countryDateDim)
-	      .group(newDeathsByCountryDate)
-	      .seriesAccessor(function(d) { return d.key[0]; })
-	      .keyAccessor(function(d)  { return d.key[1];})
-	      .elasticY(true)
-	      .xAxisLabel("")
-	      .yAxisLabel("new Deaths")
-	      .x(d3.scaleTime().domain([minDate, maxDate]))
-	      .renderHorizontalGridLines(true)
-	      .renderVerticalGridLines(true)
-	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
-	      .brushOn(false);
+	    svg.select(".xgrid")
+		.attr("transform", "translate(0," +(height ) + ")")
+		.call(d3.axisBottom(x)
+		      .tickSize(-height, 0, 0)
+		      .tickFormat("")
+		     )
+	    svg.select(".ygrid")
+		.call(d3.axisLeft(y)
+		      .tickSize(-width, 0, 0)
+		      .tickFormat("")
+		     )
 
-	  newRecoveredByDateChart
-	      .width(800)
-	      .height(200)
-              .margins({top: 30, right: 50, bottom: 25, left: 70})
-	      .dimension(countryDateDim)
-	      .group(newRecoveredByCountryDate)
-	      .seriesAccessor(function(d) { return d.key[0]; })
-	      .keyAccessor(function(d)  { return d.key[1];})
-	      .elasticY(true)
-	      .xAxisLabel("")
-	      .yAxisLabel("new Recovered")
-	      .x(d3.scaleTime().domain([minDate, maxDate]))
-	      .renderHorizontalGridLines(true)
-	      .renderVerticalGridLines(true)
-	      .legend(dc.legend().x(0.2*800).y(10).itemHeight(10).gap(5))
-	      .brushOn(false);
 
-	  resetAll();
-	  d3.select("#loading").remove();
+	    g = svg.select(".legend")
+		.selectAll("text")
+		.data(csel)
+	    g.exit().transition().remove();
+	    g.enter().append("text")
+		.text(function(d,i) {console.log("legend", d,i); return d})
+		.attr("x", (d,i) => 10)
+		.attr("y", (d,i) => (10+i*10))
+		.attr("fill", (d,i) => colors[i])
+		.on("click", (c,i) => { csel.splice(csel.indexOf(c),1);
+					d3.select("#world").selectAll(".selected").filter(d=> cc(d.properties.name)==c).attr("class", "country");
+					myplot.update()
+					myplot2.update()
+					;})
+	    g.text(function(d,i) {console.log("legend", d,i); return d})
+	}
 
-      })
+	chart.update = function(_) {
+	    chart();
+	    return chart;
+	};
 
-    </script>
-  </body>
+	return chart;
+    }
+
+    population = {"Afghanistan":37172386,"Albania":2866376,"Algeria":42228429,"American Samoa":55465,"Andorra":77006,"Angola":30809762,"Antigua and Barbuda":96286,"Arab World":419790588,"Argentina":44494502,"Armenia":2951776,"Aruba":105845,"Australia":24982688,"Austria":8840521,"Azerbaijan":9939800,"Bahamas, The":385640,"Bahrain":1569439,"Bangladesh":161356039,"Barbados":286641,"Belarus":9483499,"Belgium":11433256,"Belize":383071,"Benin":11485048,"Bermuda":63973,"Bhutan":754394,"Bolivia":11353142,"Bosnia and Herzegovina":3323929,"Botswana":2254126,"Brazil":209469333,"British Virgin Islands":29802,"Brunei Darussalam":428962,"Bulgaria":7025037,"Burkina Faso":19751535,"Burundi":11175378,"Cabo Verde":543767,"Cambodia":16249798,"Cameroon":25216237,"Canada":37057765,"Caribbean small states":7358965,"Cayman Islands":64174,"Central African Republic":4666377,"Central Europe and the Baltics":102511922,"Chad":15477751,"Channel Islands":170499,"Chile":18729160,"China":1392730000,"Colombia":49648685,"Comoros":832322,"Congo, Dem. Rep.":84068091,"Congo, Rep.":5244363,"Costa Rica":4999441,"Cote d'Ivoire":25069229,"Croatia":4087843,"Cuba":11338138,"Curacao":159800,"Cyprus":1189265,"Czechia":10629928,"Denmark":5793636,"Djibouti":958920,"Dominica":71625,"Dominican Republic":10627165,"Early-demographic dividend":3249140605,"East Asia & Pacific":2328220870,"East Asia & Pacific (IDA & IBRD countries)":2056064424,"East Asia & Pacific (excluding high income)":2081651801,"Ecuador":17084357,"Egypt":98423595,"El Salvador":6420744,"Equatorial Guinea":1308974,"Eritrea":3213972,"Estonia":1321977,"Eswatini":1136191,"Ethiopia":109224559,"Euro area":341783171,"Europe & Central Asia":918793590,"Europe & Central Asia (IDA & IBRD countries)":459865205,"Europe & Central Asia (excluding high income)":417797257,"European Union":446786293,"Faroe Islands":48497,"Fiji":883483,"Finland":5515525,"Fragile and conflict affected situations":743958386,"France":66977107,"French Polynesia":277679,"Gabon":2119275,"Gambia, The":2280102,"Georgia":3726549,"Germany":82905782,"Ghana":29767108,"Gibraltar":33718,"Greece":10731726,"Greenland":56025,"Grenada":111454,"Guam":165768,"Guatemala":17247807,"Guinea":12414318,"Guinea-Bissau":1874309,"Guyana":779004,"Haiti":11123176,"Heavily indebted poor countries (HIPC)":780234406,"High income":1210312147,"Honduras":9587522,"Hong Kong SAR, China":7451000,"Hungary":9775564,"IBRD only":4772284113,"IDA & IBRD total":6412522234,"IDA blend":555830605,"IDA only":1084407516,"IDA total":1640238121,"Iceland":352721,"India":1352617328,"Indonesia":267663435,"Iran, Islamic Rep.":81800269,"Iraq":38433600,"Ireland":4867309,"Isle of Man":84077,"Israel":8882800,"Italy":60421760,"Jamaica":2934855,"Japan":126529100,"Jordan":9956011,"Kazakhstan":18272430,"Kenya":51393010,"Kiribati":115847,"Korea, Dem. People\u2019s Rep.":25549819,"Korea; South":51606633,"Kosovo":1845300,"Kuwait":4137309,"Kyrgyz Republic":6322800,"Lao PDR":7061507,"Late-demographic dividend":2288665963,"Latin America & Caribbean":641357515,"Latin America & Caribbean (excluding high income)":609013934,"Latin America & the Caribbean (IDA & IBRD countries)":625569713,"Latvia":1927174,"Least developed countries: UN classification":1009662578,"Lebanon":6848925,"Lesotho":2108132,"Liberia":4818977,"Libya":6678567,"Liechtenstein":37910,"Lithuania":2801543,"Low & middle income":6383958209,"Low income":705417321,"Lower middle income":3022905169,"Luxembourg":607950,"Macao SAR, China":631636,"Madagascar":26262368,"Malawi":18143315,"Malaysia":31528585,"Maldives":515696,"Mali":19077690,"Malta":484630,"Marshall Islands":58413,"Mauritania":4403319,"Mauritius":1265303,"Mexico":126190788,"Micronesia, Fed. Sts.":112640,"Middle East & North Africa":448912859,"Middle East & North Africa (IDA & IBRD countries)":378327628,"Middle East & North Africa (excluding high income)":382896715,"Middle income":5678540888,"Moldova":2706049,"Monaco":38682,"Mongolia":3170208,"Montenegro":622227,"Morocco":36029138,"Mozambique":29495962,"Myanmar":53708395,"Namibia":2448255,"Nauru":12704,"Nepal":28087871,"Netherlands":17231624,"New Caledonia":284060,"New Zealand":4841000,"Nicaragua":6465513,"Niger":22442948,"Nigeria":195874740,"North America":364290258,"North Macedonia":2082958,"Northern Mariana Islands":56882,"Norway":5311916,"OECD members":1303529456,"Oman":4829483,"Other small states":30758989,"Pacific island small states":2457367,"Pakistan":212215030,"Palau":17907,"Panama":4176873,"Papua New Guinea":8606316,"Paraguay":6956071,"Peru":31989256,"Philippines":106651922,"Poland":37974750,"Portugal":10283822,"Post-demographic dividend":1109997273,"Pre-demographic dividend":919485393,"Puerto Rico":3195153,"Qatar":2781677,"Romania":19466145,"Russia":144478050,"Rwanda":12301939,"Samoa":196130,"San Marino":33785,"Sao Tome and Principe":211028,"Saudi Arabia":33699947,"Senegal":15854360,"Serbia":6982604,"Seychelles":96762,"Sierra Leone":7650154,"Singapore":5638676,"Sint Maarten (Dutch part)":40654,"Slovakia":5446771,"Slovenia":2073894,"Small states":40575321,"Solomon Islands":652858,"Somalia":15008154,"South Africa":57779622,"South Asia":1814388744,"South Asia (IDA & IBRD)":1814388744,"South Sudan":10975920,"Spain":46796540,"Sri Lanka":21670000,"St. Kitts and Nevis":52441,"St. Lucia":181889,"St. Martin (French part)":37264,"St. Vincent and the Grenadines":110210,"Sub-Saharan Africa":1078306520,"Sub-Saharan Africa (IDA & IBRD countries)":1078306520,"Sub-Saharan Africa (excluding high income)":1078209758,"Sudan":41801533,"Suriname":575991,"Sweden":10175214,"Switzerland":8513227,"Syrian Arab Republic":16906283,"Tajikistan":9100837,"Tanzania":56318348,"Thailand":69428524,"Timor-Leste":1267972,"Togo":7889094,"Tonga":103197,"Trinidad and Tobago":1389858,"Tunisia":11565204,"Turkey":82319724,"Turkmenistan":5850908,"Turks and Caicos Islands":37665,"Tuvalu":11508,"Uganda":42723139,"Ukraine":44622516,"United Arab Emirates":9630959,"United Kingdom":66460344,"United States":326687501,"Upper middle income":2655635719,"Uruguay":3449299,"Uzbekistan":32955400,"Vanuatu":292680,"Venezuela, RB":28870195,"Vietnam":95540395,"Virgin Islands (U.S.)":106977,"West Bank and Gaza":4569087,"World":7594270356,"Yemen, Rep.":28498687,"Zambia":17351822,"Zimbabwe":14439018};
+
+  </script>
+</body>
 </html>
